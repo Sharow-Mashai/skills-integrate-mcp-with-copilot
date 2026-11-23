@@ -3,6 +3,32 @@ document.addEventListener("DOMContentLoaded", () => {
   const activitySelect = document.getElementById("activity");
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
+  const signupContainer = document.getElementById("signup-container");
+  const userMenuButton = document.getElementById("user-menu-button");
+  const loginModal = document.getElementById("login-modal");
+  const closeLoginButton = document.getElementById("close-login");
+  const loginForm = document.getElementById("login-form");
+  const adminStatus = document.getElementById("admin-status");
+
+  let authorization = sessionStorage.getItem("teacherAuthorization");
+  let username = sessionStorage.getItem("teacherUsername");
+
+  function isAdmin() {
+    return Boolean(authorization);
+  }
+
+  function updateAdminMode() {
+    signupContainer.classList.toggle("hidden", !isAdmin());
+    adminStatus.classList.toggle("hidden", !isAdmin());
+    adminStatus.textContent = isAdmin() ? `Logged in as ${username}` : "";
+    fetchActivities();
+  }
+
+  function authHeaders() {
+    return authorization
+      ? { Authorization: `Basic ${authorization}` }
+      : {};
+  }
 
   // Function to fetch activities from API
   async function fetchActivities() {
@@ -30,7 +56,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 ${details.participants
                   .map(
                     (email) =>
-                      `<li><span class="participant-email">${email}</span><button class="delete-btn" data-activity="${name}" data-email="${email}">❌</button></li>`
+                      `<li><span class="participant-email">${email}</span>${isAdmin()
+                        ? `<button class="delete-btn" data-activity="${name}" data-email="${email}" aria-label="Remove ${email}">❌</button>`
+                        : ""}</li>`
                   )
                   .join("")}
               </ul>
@@ -80,6 +108,7 @@ document.addEventListener("DOMContentLoaded", () => {
         )}/unregister?email=${encodeURIComponent(email)}`,
         {
           method: "DELETE",
+          headers: authHeaders(),
         }
       );
 
@@ -124,6 +153,7 @@ document.addEventListener("DOMContentLoaded", () => {
         )}/signup?email=${encodeURIComponent(email)}`,
         {
           method: "POST",
+          headers: authHeaders(),
         }
       );
 
@@ -155,6 +185,65 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  userMenuButton.addEventListener("click", () => {
+    if (isAdmin()) {
+      if (window.confirm(`Log out ${username}?`)) {
+        authorization = null;
+        username = null;
+        sessionStorage.removeItem("teacherAuthorization");
+        sessionStorage.removeItem("teacherUsername");
+        updateAdminMode();
+      }
+      return;
+    }
+    loginModal.classList.remove("hidden");
+  });
+
+  closeLoginButton.addEventListener("click", () => {
+    loginModal.classList.add("hidden");
+  });
+
+  loginModal.addEventListener("click", (event) => {
+    if (event.target === loginModal) {
+      loginModal.classList.add("hidden");
+    }
+  });
+
+  loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const loginUsername = document.getElementById("username").value;
+    const password = document.getElementById("password").value;
+
+    try {
+      const response = await fetch("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: loginUsername, password }),
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.detail || "Invalid credentials");
+      }
+
+      authorization = btoa(`${loginUsername}:${password}`);
+      username = result.username;
+      sessionStorage.setItem("teacherAuthorization", authorization);
+      sessionStorage.setItem("teacherUsername", username);
+      loginForm.reset();
+      loginModal.classList.add("hidden");
+      updateAdminMode();
+      messageDiv.textContent = "Teacher login successful";
+      messageDiv.className = "success";
+      messageDiv.classList.remove("hidden");
+      setTimeout(() => messageDiv.classList.add("hidden"), 5000);
+    } catch (error) {
+      messageDiv.textContent = error.message;
+      messageDiv.className = "error";
+      messageDiv.classList.remove("hidden");
+    }
+  });
+
   // Initialize app
-  fetchActivities();
+  updateAdminMode();
 });
